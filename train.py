@@ -7,6 +7,7 @@ import time
 import math
 import argparse
 import os
+import pickle
 
 
 def train(model, iterator, optimizer, criterion, clip=1):
@@ -135,6 +136,7 @@ parser.add_argument('--text_file_path',
                     type=str,
                     default='data/cleaned_emails.txt_0.001.txt')
 parser.add_argument('--inference_mode', type=bool, default=False)
+parser.add_argument('--vocab_path', type=str, default='vocab.pkl')
 parser.add_argument('--model_path', type=str, default='checkpoints/model.pt')
 parser.add_argument('--inference_text', type=str, default='Hi')
 args = parser.parse_args()
@@ -160,27 +162,26 @@ inference_text = args.inference_text
 
 print('device: ', device)
 
-# Define dataset and data loader
-email_dataset = EmailDataset(file_path=text_file_path,
-                             seq_len=seq_len,
-                             label_len=label_len)
-email_loader = DataLoader(email_dataset, batch_size=batch_size, shuffle=True)
-
-# Initialize model, optimizer, and loss function
-encoder = Encoder(len(email_dataset.vocab), embedding_size, hidden_size,
-                  num_layers, dropout)
-decoder = Decoder(len(email_dataset.vocab), embedding_size, hidden_size,
-                  num_layers, dropout)
-seq2seq_model = Seq2Seq(encoder, decoder, device).to(device)
-optimizer = torch.optim.Adam(seq2seq_model.parameters(), lr=learning_rate)
-criterion = nn.CrossEntropyLoss(ignore_index=email_dataset.vocab['<PAD>'])
-
 
 CLIP = 1
 
 best_valid_loss = float('inf')
 
 if inference_mode == False:
+    # Define dataset and data loader
+    email_dataset = EmailDataset(file_path=text_file_path,
+                                seq_len=seq_len,
+                                label_len=label_len)
+    email_loader = DataLoader(email_dataset, batch_size=batch_size, shuffle=True)
+
+    # Initialize model, optimizer, and loss function
+    encoder = Encoder(len(email_dataset.vocab), embedding_size, hidden_size,
+                    num_layers, dropout)
+    decoder = Decoder(len(email_dataset.vocab), embedding_size, hidden_size,
+                    num_layers, dropout)
+    seq2seq_model = Seq2Seq(encoder, decoder, device).to(device)
+    optimizer = torch.optim.Adam(seq2seq_model.parameters(), lr=learning_rate)
+    criterion = nn.CrossEntropyLoss(ignore_index=email_dataset.vocab['<PAD>'])
     print('Training model...')
     for epoch in range(num_epochs):
 
@@ -209,17 +210,31 @@ if inference_mode == False:
                        os.path.join(args.checkpint_dir, f'model_{epoch+1}.pt'))
 else:
     # inference
+    print('Inference mode...')
     assert os.path.exists(model_path), 'model path does not exist'
+    # open vocab
+    vocab = None
+    with open(args.vocab_path, 'rb') as f:
+        vocab = pickle.load(f)
+
+    assert vocab is not None, 'vocab is None'
+
+     # Initialize model
+    encoder = Encoder(len(vocab), embedding_size, hidden_size,
+                    num_layers, dropout)
+    decoder = Decoder(len(vocab), embedding_size, hidden_size,
+                    num_layers, dropout)
+    seq2seq_model = Seq2Seq(encoder, decoder, device).to(device)
     checkpoint = torch.load(model_path)
-    seq2seq_model.load_state_dict()
+    seq2seq_model.load_state_dict(checkpoint)
     seq2seq_model.eval()
     src = inference_text
-    src = [email_dataset.vocab[token.lower()] for token in src.split()]
+    src = [vocab[token.lower()] for token in src.split()]
     # add <SOS> and <EOS> tokens
-    src = [email_dataset.vocab['<SOS>']] + src + [email_dataset.vocab['<EOS>']]
+    src = [vocab['<SOS>']] + src + [vocab['<EOS>']]
     print(
         inference(seq2seq_model,
-                  email_dataset.vocab,
+                  vocab,
                   src,
                   max_len=50,
                   device=device))
