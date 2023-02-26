@@ -16,7 +16,7 @@ PyTorch
 Spacy
 
 ## Usage
-1. Clone the repository: `git clone https://github.com/username/repo.git`
+1. Clone the repository: `https://github.com/Mahmood-Hussain/e-assistant.git`
 2. Install the requirements (releasing soon)
 3. Download and preprocess the dataset (releasing soon)
 4. Train the model: python train.py
